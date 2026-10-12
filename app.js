@@ -1,3 +1,4 @@
+const APP_VER='v16';
 // Fardriver Dash — READ-ONLY. Protocol per github.com/jackhumbert/fardriver-controllers
 // HARD WRITE LOCK: any write method on a BLE characteristic throws; this app never transmits.
 const WRITE_LOCK=Object.freeze(true);
@@ -92,9 +93,11 @@ $('btConnect').onclick=async()=>{if(bleBusy)return;bleBusy=true;
   const svcs=[...new Set([svc.toLowerCase(),FFF0,FD00,FFE0].filter(okU))];
   // Bluefy/Web BLE: service filters only match ADVERTISED UUIDs (FD00), so FFF0 must be in optionalServices to be usable after connect.
   const opt=[...new Set(svcs)]; // full 128-bit strings only (numeric short UUIDs can confuse some iOS Web-BLE browsers)
-  if(navigator.bluetooth.getAvailability){try{if(!(await navigator.bluetooth.getAvailability()))throw new Error('Bluetooth is off or unavailable. Turn on Bluetooth (and allow Bluefy Bluetooth access in iOS Settings).')}catch(e){if(/off/.test(e.message))throw e}}
-  const opts=$('bleflt').checked?{filters:[{namePrefix:'Controller'},{services:[FD00]}],optionalServices:opt}:{acceptAllDevices:true,optionalServices:opt};
-  window.__rdo=opts;const dev=await navigator.bluetooth.requestDevice(opts);
+    const opts=$('bleflt').checked?{filters:[{namePrefix:'Controller'},{services:[FD00]}],optionalServices:opt}:{acceptAllDevices:true,optionalServices:opt};
+  window.__rdo=opts;let dev;
+  // requestDevice is called FIRST (no awaits before it) so the tap's user-gesture is still valid — Bluefy/iOS reject otherwise.
+  try{dev=await navigator.bluetooth.requestDevice(opts)}catch(e){let av=null;try{av=navigator.bluetooth.getAvailability?await navigator.bluetooth.getAvailability():null}catch(_){}
+   if(av===false)throw new Error('Bluetooth is off or unavailable. Turn on Bluetooth (and allow Bluefy Bluetooth access in iOS Settings).');throw e}
   $('status').textContent='Connecting…';const g=await dev.gatt.connect();
   // Subscribe to EVERY notify/indicate char (startNotifications only). Count valid 0xAA packets per char; auto-select the first with ≥3 valid.
   const subs=[];window.__subs=subs;let sel=null;
@@ -136,7 +139,16 @@ $('btApply').onclick=()=>{const sel=document.querySelector('input[name=pf]:check
  localStorage.fd_backup=JSON.stringify(backup);
  $('dry').textContent=`DRY-RUN ${sel.value}: would set battery ${Math.floor(Math.min(p.batA,L.bat))}A, launch phase ${Math.floor(L.ph*p.launch)}A, speed ${p.speed*100}%.\n  0x19 MaxLineCurr (/4) = ${Math.min(p.batA,L.bat)*4}\n  0x2A+ MaxPhaseCurr (/4) = ${Math.floor(L.ph)*4}\n  0x30+ LowSpeedPhaseCurr (%×128/100, UNCONFIRMED) = 128\n  0x30+ LowSpeedLineCurr = 128\n  0x30+ MidSppedPhaseCurr = ${Math.round(p.mid*128)}\n  0x30+ MidSpeedLineCurr = ${Math.round(p.mid*128)}\n  0x8E RatioMax (high-rpm %, UNCONFIRMED) = ${p.top*100}\n  0x1A ThrottleResponse = 0 (Line: smooth/progressive)\n  0x2A+ Max_Acc = gentle (units UNCONFIRMED; tune in official app)\n  Field weakening: ${p.fw}\n${F.writes.map(w=>'  '+w[0]+' = '+w[1]).join('\n')}\nBackup saved to this browser.\nNOTHING SENT — write protocol for these parameters is unverified.`;};
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));$('t-'+b.dataset.t).classList.add('on')});
-if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js?v=16').catch(()=>{});
+$('ver').textContent=APP_VER;$('bleflt').checked=localStorage.fd_bleflt==='1';$('bleflt').onchange=()=>localStorage.fd_bleflt=$('bleflt').checked?'1':'0';
+$('btTest').onclick=()=>{const out=$('testout');const log=s=>{out.textContent+=s+'\n'};out.textContent='';
+ if(!navigator.bluetooth){log('navigator.bluetooth = undefined (not a Web BLE browser)');return}
+ log('UA: '+navigator.userAgent);log('isSecureContext: '+window.isSecureContext);
+ // call requestDevice synchronously inside the tap (before any await)
+ const p=navigator.bluetooth.requestDevice({acceptAllDevices:true});
+ p.then(d=>{log('requestDevice OK → name="'+d.name+'" id='+d.id+' gatt='+!!d.gatt);try{d.gatt&&d.gatt.connected&&d.gatt.disconnect()}catch(_){}}).catch(e=>{const raw={type:typeof e,name:e&&e.name,message:e&&e.message,code:e&&e.code,str:String(e)};try{raw.json=JSON.stringify(e)}catch(_){}log('requestDevice ERROR: '+JSON.stringify(raw))})
+ .finally(async()=>{try{log('getAvailability: '+(navigator.bluetooth.getAvailability?await navigator.bluetooth.getAvailability():'n/a'))}catch(e){log('getAvailability ERROR: '+e)}});};
+$('btReset').onclick=async()=>{try{for(const r of await navigator.serviceWorker.getRegistrations())await r.unregister();for(const k of await caches.keys())await caches.delete(k)}catch(e){}location.replace(location.pathname+'?v='+Date.now())};
 if(location.hash.includes('demo'))$('btDemo').click();
 if(location.hash.includes('prof'))document.querySelector('nav button[data-t=prof]').click();
 
