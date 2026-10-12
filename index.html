@@ -1,0 +1,74 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Fardriver Dash</title><link rel="manifest" href="manifest.json"><meta name="theme-color" content="#0b0f14"><link rel="apple-touch-icon" href="icon.svg">
+<style>
+:root{--bg:#0b0f14;--card:#151c25;--fg:#e8eef5;--mut:#8a97a8;--ok:#3fd07a}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:16px system-ui,sans-serif;padding:env(safe-area-inset-top) 10px 80px}
+header{display:flex;justify-content:space-between;align-items:center;padding:10px 4px}h1{font-size:18px;margin:0}
+.badge{padding:4px 10px;border-radius:99px;font-size:13px;background:#243040}.badge.ok{background:#1d5a37}.badge.demo{background:#5a4a1d}
+button{background:#243040;color:var(--fg);border:0;border-radius:12px;padding:12px 14px;font-size:16px}button.pri{background:var(--ok);color:#000;font-weight:700}button:disabled{opacity:.4}
+.big{background:var(--card);border-radius:18px;text-align:center;padding:16px}.big .v{font-size:84px;font-weight:800;line-height:1}.big .u{color:var(--mut)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}.c{background:var(--card);border-radius:16px;padding:12px}
+.c .l{color:var(--mut);font-size:13px}.c .v{font-size:34px;font-weight:700}.c .v small{font-size:15px;color:var(--mut)}
+.err{margin-top:10px;border-radius:16px;padding:12px;background:#1d3a2a}.err.on{background:#4a1a1a}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:#10161e;padding:8px 8px calc(8px + env(safe-area-inset-bottom))}nav button{flex:1;margin:0 4px}
+.tab{display:none}.tab.on{display:block}label{display:block;margin:10px 0 4px;color:var(--mut)}input,select{width:100%;padding:10px;border-radius:10px;border:0;background:#243040;color:var(--fg);font-size:16px}
+.note{font-size:13px;color:var(--mut)}.warnbox{background:#3a2a10;border-radius:12px;padding:10px;font-size:14px}table{width:100%;border-collapse:collapse}td,th{padding:6px;border-bottom:1px solid #243040;text-align:left}
+</style></head><body>
+<header><h1>⚡ Fardriver Dash</h1><span id="status" class="badge">Disconnected</span></header>
+<div style="display:flex;gap:8px;margin-bottom:10px"><button class="pri" id="btConnect" style="flex:1">Connect BLE</button><button id="btDemo" style="flex:1">Demo mode</button></div>
+<section id="t-dash" class="tab on">
+ <div class="big"><div class="v" id="speed">0</div><div class="u">km/h · <span id="rpm">0</span> rpm · Gear <span id="gear">-</span> <span id="dir"></span></div></div>
+ <div class="grid">
+  <div class="c"><div class="l">Battery voltage</div><div class="v" id="volt">--<small> V</small></div><div class="note" id="soc"></div><div class="note" id="packlbl"></div></div>
+  <div class="c"><div class="l">Battery current</div><div class="v" id="amp">--<small> A</small></div></div>
+  <div class="c"><div class="l">Power</div><div class="v" id="kw">--<small> kW</small></div></div>
+  <div class="c"><div class="l">Regen / Brake</div><div class="v" id="regen" style="font-size:22px">--</div></div>
+  <div class="c"><div class="l">Controller temp</div><div class="v" id="ctemp">--<small> °C</small></div></div>
+  <div class="c"><div class="l">Motor temp</div><div class="v" id="mtemp">--<small> °C</small></div></div>
+ </div>
+ <div class="err" id="errbox"><b id="errtitle">No faults</b><div id="errlist" class="note"></div></div>
+ <p class="note" id="pkt">Packets: 0</p>
+</section>
+<section id="t-prof" class="tab">
+ <h2>Profiles</h2>
+ <div class="warnbox">🔒 <b>Writing is DISABLED.</b> Profiles are preview only, clamped to your safe limits. The Fardriver write encoding for limit parameters is not verified, so this app never sends anything to the controller. Use the official Fardriver app to change settings for now.</div>
+ <p class="note">All modes: full launch phase current, 200A battery, smooth progressive throttle (no snatch). Modes differ only in mid/top end.</p><table id="proftbl"></table>
+ <h3>One-pedal driving</h3>
+ <label><input type="checkbox" id="op_on" style="width:auto" checked> Regen when throttle released (FollowConfig = 3 "EABS when release throttle")</label>
+ <label>Regen current (max 60 A)</label><select id="op_amp"><option>30</option><option>45</option><option selected>60</option></select>
+ <label>Regen strength: <b id="op_val">100</b>% of your BMS charge limit (max, all modes) — smooth onset (Max_Dec) then stays strong to a stop (nratio 90/100/100/100). Regen still fades in the last few km/h (no back-EMF near 0 rpm) — finish with the brake; hold (5 s anti-rollback) only slows roll-back, it is not a parking brake</label><input type="range" id="op_str" min="0" max="100" value="100">
+ <p class="note" id="op_map"></p>
+ <h3>Hold when stationary</h3>
+ <label><input type="checkbox" id="hold_on" style="width:auto" checked> Anti-rollback / slope park (ParkConfig = 2 "SlowDownPark")</label>
+ <label>Hold strength (ParkCoeff 0–15, capped)</label><input type="range" id="hold_str" min="0" max="8" value="6">
+ <p class="note" id="hold_map"></p>
+ <div class="warnbox">⚠ <b>Limits:</b> Fardriver regen cannot bring the bike to a full stop — regen fades to zero near 0 rpm, so one-pedal still needs the brake to stop. "Hold" is anti-rollback (limits roll to a crawl at reduced current, times out after 5 s via ParkTime) — <b>not</b> a true electronic handbrake; use the mechanical brake/side-stand on hills. Regen on a full pack can trip the BMS charge cut-off (losing regen suddenly, or killing power on some BMSs); holding at standstill pushes current through one phase and heats the motor/controller.</div>
+ <label><input type="checkbox" id="devsw" style="width:auto"> Developer: enable write pipeline (DRY-RUN only, nothing transmitted)</label>
+ <button id="btApply" disabled>Back up params, then apply profile (dry-run)</button>
+ <pre id="dry" class="note" style="white-space:pre-wrap"></pre>
+</section>
+<section id="t-set" class="tab">
+ <h2>Setup</h2>
+ <label>Controller model (sets voltage limits)</label><select id="model"><option value="ND72450">ND72450 (≤72V nominal, 450A phase peak)</option><option value="ND961000">ND961000 (≤96V nominal, 1000A phase peak)</option></select>
+ <label>Battery pack</label><select id="pack"><option value="auto">Auto-detect from voltage</option><option value="48">48V BMW SDI (manual)</option><option value="72">72V (manual)</option></select>
+ <label>BMS max battery current (A)</label><input id="bms" type="number" value="200">
+ <label>BMS max CHARGE current (A) — caps regen</label><input id="bmschg" type="number" value="30">
+ <label>Motor safe max phase current (A) — QS165 60H</label><input id="phmax" type="number" value="400">
+ <label>Motor pole pairs</label><input id="pp" type="number" value="16">
+ <label>Reduction gear ratio (motor → transfer case)</label><input id="gr" type="number" step="0.01" value="6.5">
+ <label>Diff ratio (Sierra)</label><input id="diff" type="number" step="0.001" value="3.909">
+ <label>Tyre circumference (m) — 32" ≈ 2.55</label><input id="wheel" type="number" step="0.001" value="2.55">
+ <label>RPM factor (rpm = raw × factor ÷ pole pairs)</label><input id="rf" type="number" step="0.1" value="4">
+ <p class="note">Speed/RPM scaling comes from community code — calibrate against GPS. Safety values are placeholders; enter your real BMS and motor limits.</p>
+ <h3>Tune backup (passive, read-only)</h3>
+ <div class="warnbox">UNVERIFIED until tested on real hardware. The controller streams its memory blocks continuously; this records every CRC-valid block without sending anything. No read-request command is sent (none is documented safely). <b>Also screenshot every parameter page in the official Fardriver app</b> as a second backup.</div>
+ <p class="note" id="bkprog">Captured 0 blocks</p>
+ <div style="display:flex;gap:8px"><button id="btBkSave" style="flex:1">Save backup</button><button id="btBkExport" style="flex:1">Export / Share</button></div>
+ <p class="note" id="bkmsg"></p>
+ <label>BLE service UUID</label><input id="svc" value="0000fff0-0000-1000-8000-00805f9b34fb">
+ <label>Notify characteristic UUID (FFF2 data stream; blank = auto-discover first NOTIFY char; FFF1 write channel is never used)</label><input id="chr" value="0000fff2-0000-1000-8000-00805f9b34fb"><p class="note" id="bleinfo">Scans for names starting "Controller" (e.g. Controller Wired-3432C35D) or advertised service FD00/FFE0; data service FFF0.</p>
+ <label>Raw BLE log (last 40 notifications — screenshot this)</label><pre id="rawlog" class="note" style="white-space:pre-wrap;word-break:break-all;max-height:300px;overflow:auto;background:#10161e;padding:8px;border-radius:8px"></pre>
+ <p class="note"><b>iPhone:</b> Safari and Chrome on iOS have no Web Bluetooth. Open this page in the free <b>Bluefy – Web BLE Browser</b> app. Android: Chrome works directly. Close the official Fardriver app first (the BLE dongle accepts one connection).</p>
+</section>
+<nav><button data-t="dash">Dash</button><button data-t="prof">Profiles</button><button data-t="set">Setup</button></nav>
+<script src="app.js"></script></body></html>
