@@ -68,11 +68,20 @@ $('btDemo').onclick=()=>{if(demo){clearInterval(demo);demo=null;$('status').text
 
 // BLE (read-only: subscribe to notifications, never write)
 let bleBusy=false;
-function bleErr(e){const m=typeof e==='string'?e:(e&&e.message)||String(e);const n=e&&e.name;let hint='';
- if(n==='NotFoundError'||/cancel|chooser/i.test(m))hint='No device chosen. Make sure the bike is powered on, the official Fardriver app and nRF Connect are fully closed/disconnected (the dongle allows ONE connection), then try again. Try Setup → turn OFF "Filter to Fardriver only".';
+const CB={0:'unknown CoreBluetooth error',1:'invalid parameters',2:'operation cancelled / no device selected (or invalid handle)',3:'device not connected',5:'operation cancelled',6:'connection timed out',7:'device disconnected',8:'UUID not allowed',10:'connection failed',11:'connection limit reached (dongle busy?)',13:'operation not supported',14:'pairing removed',15:'encryption timed out'};
+function bleErr(e){const raw={type:typeof e,name:e&&e.name,message:e&&e.message,code:e&&e.code,str:String(e)};try{raw.json=JSON.stringify(e)}catch(_){}
+ rawLog.push('ERROR '+JSON.stringify(raw));if(rawLog.length>40)rawLog.shift();try{$('rawlog').textContent=rawLog.join('\n')}catch(_){}
+ let m=typeof e==='string'?e:(e&&e.message)||String(e);const n=e&&e.name;let hint='';
+ const num=typeof e==='number'?e:/^\s*-?\d+\s*$/.test(m)?+m:(e&&typeof e.code==='number'&&!n?e.code:null);
+ if(num!==null){m=`code ${num} — ${CB[num]||'unknown'}`;
+  hint=num===2||num===5?'Usually means the device picker closed with no device chosen — e.g. the controller was off or the dongle was busy. Power the bike on, close nRF Connect and the Fardriver app (the dongle allows ONE connection), wait 10 s, then tap Connect and pick "Controller Wired-…". Also check iOS Settings → Bluefy → Bluetooth is allowed.'
+   :num===6||num===7||num===10?'Connection dropped — move closer, power-cycle the bike, retry.':num===11?'Dongle busy — disconnect other apps/phones.':'Check Bluetooth is on and Bluefy has Bluetooth permission (iOS Settings → Bluefy).';}
+ else if(n==='NotFoundError'||/cancel|chooser/i.test(m))hint='No device chosen. Make sure the bike is powered on, the official Fardriver app and nRF Connect are fully closed/disconnected (the dongle allows ONE connection), then try again. Try Setup → turn OFF "Filter to Fardriver only".';
  else if(/off|unavailable|disabled|adapter/i.test(m))hint='Turn on Bluetooth and allow Bluefy to use Bluetooth (iOS Settings → Bluefy).';
+ else if(/unauthori|permission|denied/i.test(m))hint='Allow Bluetooth for Bluefy: iOS Settings → Privacy & Security → Bluetooth → Bluefy.';
  else if(n==='SecurityError')hint='Page must be opened over HTTPS in Bluefy.';
  else if(n==='NetworkError')hint='Connection dropped — move closer, power-cycle the bike, retry.';
+ else hint='Unrecognised error — screenshot Setup → Raw BLE log and send it.';
  const b=$('bleerr');b.style.display='block';b.innerHTML='<b>Bluetooth error:</b> '+m.replace(/</g,'&lt;')+(hint?'<br>'+hint:'');}
 $('btConnect').onclick=async()=>{if(bleBusy)return;bleBusy=true;
  if(!navigator.bluetooth){bleErr('Web Bluetooth not available. iPhone: open this page in the Bluefy app. Android: use Chrome.');bleBusy=false;return}$('bleerr').style.display='none';
@@ -82,7 +91,7 @@ $('btConnect').onclick=async()=>{if(bleBusy)return;bleBusy=true;
   const okU=u=>/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(u);
   const svcs=[...new Set([svc.toLowerCase(),FFF0,FD00,FFE0].filter(okU))];
   // Bluefy/Web BLE: service filters only match ADVERTISED UUIDs (FD00), so FFF0 must be in optionalServices to be usable after connect.
-  const opt=[...new Set([...svcs,0xfff0,0xfd00,0xffe0])];
+  const opt=[...new Set(svcs)]; // full 128-bit strings only (numeric short UUIDs can confuse some iOS Web-BLE browsers)
   if(navigator.bluetooth.getAvailability){try{if(!(await navigator.bluetooth.getAvailability()))throw new Error('Bluetooth is off or unavailable. Turn on Bluetooth (and allow Bluefy Bluetooth access in iOS Settings).')}catch(e){if(/off/.test(e.message))throw e}}
   const opts=$('bleflt').checked?{filters:[{namePrefix:'Controller'},{services:[FD00]}],optionalServices:opt}:{acceptAllDevices:true,optionalServices:opt};
   window.__rdo=opts;const dev=await navigator.bluetooth.requestDevice(opts);
