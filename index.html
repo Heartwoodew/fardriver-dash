@@ -16,6 +16,7 @@ nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:#10161e;paddi
 </style></head><body>
 <header><h1>⚡ Fardriver Dash</h1><span id="status" class="badge">Disconnected</span></header>
 <div style="display:flex;gap:8px;margin-bottom:10px"><button class="pri" id="btConnect" style="flex:1">Connect BLE</button><button id="btDemo" style="flex:1">Demo mode</button></div>
+<div id="bleerr" class="err on" style="display:none;margin:0 0 10px"></div>
 <section id="t-dash" class="tab on">
  <div class="big"><div class="v" id="speed">0</div><div class="u">km/h · <span id="rpm">0</span> rpm · Gear <span id="gear">-</span> <span id="dir"></span></div></div>
  <div class="grid">
@@ -65,6 +66,7 @@ nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:#10161e;paddi
  <p class="note" id="bkprog">Captured 0 blocks</p>
  <div style="display:flex;gap:8px"><button id="btBkSave" style="flex:1">Save backup</button><button id="btBkExport" style="flex:1">Export / Share</button></div>
  <p class="note" id="bkmsg"></p>
+ <label><input type="checkbox" id="bleflt" style="width:auto"> Filter to Fardriver only (name "Controller…" or advertised FD00). Off = show all devices.</label>
  <label>BLE service UUID</label><input id="svc" value="0000fff0-0000-1000-8000-00805f9b34fb">
  <label>Notify characteristic UUID (FFF2 data stream; blank = auto-discover first NOTIFY char; FFF1 write channel is never used)</label><input id="chr" value="0000fff2-0000-1000-8000-00805f9b34fb"><p class="note" id="bleinfo">Scans for names starting "Controller" (e.g. Controller Wired-3432C35D) or advertised service FD00/FFE0; data service FFF0.</p>
  <label>Raw BLE log (last 40 notifications — screenshot this)</label><pre id="rawlog" class="note" style="white-space:pre-wrap;word-break:break-all;max-height:300px;overflow:auto;background:#10161e;padding:8px;border-radius:8px"></pre>

@@ -68,14 +68,24 @@ $('btDemo').onclick=()=>{if(demo){clearInterval(demo);demo=null;$('status').text
 
 // BLE (read-only: subscribe to notifications, never write)
 let bleBusy=false;
+function bleErr(e){const m=typeof e==='string'?e:(e&&e.message)||String(e);const n=e&&e.name;let hint='';
+ if(n==='NotFoundError'||/cancel|chooser/i.test(m))hint='No device chosen. Make sure the bike is powered on, the official Fardriver app and nRF Connect are fully closed/disconnected (the dongle allows ONE connection), then try again. Try Setup → turn OFF "Filter to Fardriver only".';
+ else if(/off|unavailable|disabled|adapter/i.test(m))hint='Turn on Bluetooth and allow Bluefy to use Bluetooth (iOS Settings → Bluefy).';
+ else if(n==='SecurityError')hint='Page must be opened over HTTPS in Bluefy.';
+ else if(n==='NetworkError')hint='Connection dropped — move closer, power-cycle the bike, retry.';
+ const b=$('bleerr');b.style.display='block';b.innerHTML='<b>Bluetooth error:</b> '+m.replace(/</g,'&lt;')+(hint?'<br>'+hint:'');}
 $('btConnect').onclick=async()=>{if(bleBusy)return;bleBusy=true;
- if(!navigator.bluetooth){alert('Web Bluetooth not available.\niPhone: open this page in the Bluefy app.\nAndroid: use Chrome.');return}
+ if(!navigator.bluetooth){bleErr('Web Bluetooth not available. iPhone: open this page in the Bluefy app. Android: use Chrome.');bleBusy=false;return}$('bleerr').style.display='none';
  try{const svc=$('svc').value.trim(),chr=$('chr').value.trim().toLowerCase();
   const FFF0='0000fff0-0000-1000-8000-00805f9b34fb',FD00='0000fd00-0000-1000-8000-00805f9b34fb',FFE0='0000ffe0-0000-1000-8000-00805f9b34fb';
   const FFF1='0000fff1-0000-1000-8000-00805f9b34fb'; // controller WRITE channel — never used, also blocked by lock
   const okU=u=>/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(u);
   const svcs=[...new Set([svc.toLowerCase(),FFF0,FD00,FFE0].filter(okU))];
-  const dev=await navigator.bluetooth.requestDevice({filters:[{namePrefix:'Controller'},{services:[FD00]},{services:[FFE0]}],optionalServices:svcs});
+  // Bluefy/Web BLE: service filters only match ADVERTISED UUIDs (FD00), so FFF0 must be in optionalServices to be usable after connect.
+  const opt=[...new Set([...svcs,0xfff0,0xfd00,0xffe0])];
+  if(navigator.bluetooth.getAvailability){try{if(!(await navigator.bluetooth.getAvailability()))throw new Error('Bluetooth is off or unavailable. Turn on Bluetooth (and allow Bluefy Bluetooth access in iOS Settings).')}catch(e){if(/off/.test(e.message))throw e}}
+  const opts=$('bleflt').checked?{filters:[{namePrefix:'Controller'},{services:[FD00]}],optionalServices:opt}:{acceptAllDevices:true,optionalServices:opt};
+  window.__rdo=opts;const dev=await navigator.bluetooth.requestDevice(opts);
   $('status').textContent='Connecting…';const g=await dev.gatt.connect();
   // Subscribe to EVERY notify/indicate char (startNotifications only). Count valid 0xAA packets per char; auto-select the first with ≥3 valid.
   const subs=[];window.__subs=subs;let sel=null;
@@ -92,7 +102,7 @@ $('btConnect').onclick=async()=>{if(bleBusy)return;bleBusy=true;
   const showBle=()=>{$('bleinfo').innerHTML=(dev.name||'?')+'<br>'+subs.map(r=>`${r.uuid.slice(4,8).toUpperCase()} (${r.svc.slice(4,8).toUpperCase()}): ${r.valid} valid / ${r.bytes} B${sel===r?' ← selected':''}`).join('<br>');$('rawlog').textContent=rawLog.join('\n')};window.__bleIv=setInterval(showBle,500);
   $('status').textContent=dev.name||'Connected';$('status').className='badge ok';
   detected=null;asked=false;dev.addEventListener('gattserverdisconnected',()=>{bleBusy=false;clearInterval(window.__bleIv);$('status').textContent='Disconnected';$('status').className='badge'});
- }catch(e){bleBusy=false;$('status').textContent='Error';alert('BLE: '+e.message)}};
+ }catch(e){bleBusy=false;$('status').textContent='Error';$('status').className='badge';bleErr(e)}};
 
 // Profiles (preview only, clamped)
 function limits(){const c=cfg(),m=MODELS[c.model];return{bat:c.bms,ph:Math.min(c.ph,m.ph)}}
